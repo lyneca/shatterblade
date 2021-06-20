@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31205.134
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shatterblade", "Shatterblade.csproj", "{8F127FBD-75BD-42BF-8164-168A9DB185A6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8F127FBD-75BD-42BF-8164-168A9DB185A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F127FBD-75BD-42BF-8164-168A9DB185A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F127FBD-75BD-42BF-8164-168A9DB185A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F127FBD-75BD-42BF-8164-168A9DB185A6}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EC3D1BAE-AEF4-4A2D-AD98-59D43859B4D0}
+	EndGlobalSection
+EndGlobal
