@@ -64,6 +64,11 @@ namespace Shatterblade {
             if (!shouldShow) Hide();
         }
 
+        public void SetTarget(Transform target) {
+            this.target = target;
+            this.rotationTarget = target;
+        }
+
         public void SetText(string newText) {
             if (!shouldShow) return;
             Show();

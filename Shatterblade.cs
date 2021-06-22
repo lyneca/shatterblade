@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.CodeDom;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using ThunderRoad;
@@ -41,17 +43,26 @@ namespace Shatterblade {
         public bool isDespawned;
         public Annotation handleAnnotationA;
         public Annotation handleAnnotationB;
-        public Annotation imbueShardAnnotation;
+        public Annotation otherHandAnnotation;
         public Annotation gunShardAnnotation;
         public Annotation imbueHandleAnnotation;
+        private float orgAxisLength;
+        public List<Type> modes;
+        public void Awake() {
+            modes = new List<Type>() { };
+        }
 
         public void Start() {
             Init();
+        }
+        public void RegisterMode(BladeMode newMode) {
+            modes.Add(newMode.GetType());
         }
         public void Init() {
             if (!gameObject || Player.currentCreature?.handLeft == null)
                 return;
             item = GetComponent<Item>();
+            orgAxisLength = item.mainHandleLeft.axisLength;
             parts = new List<BladePart>();
             item.ResetCenterOfMass();
             animator = GetComponentInChildren<Animator>();
@@ -77,7 +88,7 @@ namespace Shatterblade {
             ChangeMode<SwordMode>();
         }
         public void GrabEvent(Side side, Handle handle, float axisPosition, HandleOrientation orientation, EventTime time) => IgnoreCollider(Player.currentCreature.GetHand(side), true);
-        public void UnGrabEvent(Side side, Handle handle, bool throwing, EventTime time) => IgnoreCollider(Player.currentCreature.GetHand(side), false);
+        public void UnGrabEvent(Side side, Handle handle, bool throwing, EventTime time) => IgnoreCollider(Player.currentCreature.GetHand(side), false, 0.5f);
         public void ListenForHand(RagdollHand hand) {
             hand.OnGrabEvent += GrabEvent;
             hand.OnUnGrabEvent += UnGrabEvent;
@@ -95,7 +106,7 @@ namespace Shatterblade {
             DetachParts(false);
             handleAnnotationA?.Destroy();
             handleAnnotationB?.Destroy();
-            imbueShardAnnotation?.Destroy();
+            otherHandAnnotation?.Destroy();
             imbueHandleAnnotation?.Destroy();
             gunShardAnnotation?.Destroy();
         }
@@ -126,11 +137,11 @@ namespace Shatterblade {
                 partMap[part] = targetRB;
                 isSpawning[i] = false;
                 if (i == 1) {
-                    if (imbueShardAnnotation) {
-                        Destroy(imbueShardAnnotation);
-                        imbueShardAnnotation = null;
+                    if (otherHandAnnotation) {
+                        Destroy(otherHandAnnotation);
+                        otherHandAnnotation = null;
                     }
-                    imbueShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(1, -1, 0));
+                    otherHandAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(1, -1, 0));
                 } else if (i == 10) {
                     if (gunShardAnnotation) {
                         Destroy(gunShardAnnotation);
@@ -149,7 +160,7 @@ namespace Shatterblade {
 
         public void HideAllAnnotations() {
             imbueHandleAnnotation.Hide();
-            imbueShardAnnotation.Hide();
+            otherHandAnnotation.Hide();
             gunShardAnnotation.Hide();
             handleAnnotationA.Hide();
             handleAnnotationB.Hide();
@@ -186,9 +197,9 @@ namespace Shatterblade {
                 part.IgnoreRagdoll(ragdoll, ignore);
             }
         }
-        public void IgnoreCollider(RagdollHand hand, bool ignore) {
+        public void IgnoreCollider(RagdollHand hand, bool ignore, float delay = 0) {
             foreach (var part in parts) {
-                part.IgnoreHand(hand, ignore);
+                part.IgnoreHand(hand, ignore, delay);
             }
         }
         public void FixedUpdate() {
@@ -196,6 +207,7 @@ namespace Shatterblade {
                 return;
             if (item.handlers.Any(handler => handler.playerHand.controlHand.alternateUsePressed)) {
                 foreach (var handler in item.handlers) {
+                    item.mainHandleLeft.axisLength = 0;
                     item.mainHandleLeft.SetSliding(handler, false);
                     item.mainHandleLeft.StartCoroutine(StopSliding());
                 }
@@ -220,6 +232,20 @@ namespace Shatterblade {
             mode.Enter(this);
         }
 
+        public void ChangeMode(Type newMode) {
+            if (newMode.IsSubclassOf(typeof(BladeMode))) {
+                var newModeInstance = (BladeMode) Activator.CreateInstance(newMode);
+                if (mode.GetType() == newModeInstance.GetType()) {
+                    return;
+                }
+                mode?.Exit();
+                foreach (var hand in item.handlers)
+                    IgnoreCollider(hand, true);
+                mode = newModeInstance;
+                mode.Enter(this);
+            }
+        }
+
         public void CheckForMissingParts() {
             parts = parts.NotNull().Where(part => part?.gameObject?.transform != null).ToList();
             for (int i = 0; i < 15; i++) {
@@ -230,12 +256,6 @@ namespace Shatterblade {
                 }
             }
         }
-
-        public bool TopShardIsImbued() => GetPart(1).item.imbues.FirstOrDefault() is Imbue imbue
-                                          && imbue.energy / imbue.maxEnergy > 0.3f
-                                          && (imbue.spellCastBase is SpellCastGravity
-                                              || imbue.spellCastBase is SpellCastLightning
-                                              || imbue.spellCastBase is SpellCastProjectile);
 
         public void Update() {
             if (item == null) {
@@ -248,6 +268,10 @@ namespace Shatterblade {
                 PostInit();
             } else if (!isReady) {
                 return;
+            }
+
+            if (item.holder == null) {
+                HideAllAnnotations();
             }
 
             var lockedParts = from part in parts
@@ -271,52 +295,57 @@ namespace Shatterblade {
                 }
             }
 
-            if (GetPart(11)?.item?.mainHandler != null
-                && GetPart(1).item.imbues.FirstOrDefault() is Imbue imbue
-                && TopShardIsImbued()) {
-                if (imbue.spellCastBase is SpellCastGravity) {
-                    ChangeMode<GravityMode>();
-                } else if (imbue.spellCastBase is SpellCastLightning) {
-                    ChangeMode<LightningMode>();
-                } else if (imbue.spellCastBase is SpellCastProjectile) {
-                    ChangeMode<FlamethrowerMode>();
+            bool changedModes = false;
+            foreach (var mode in modes) {
+                if (((BladeMode)Activator.CreateInstance(mode)).Test(this)) {
+                    ChangeMode(mode);
+                    changedModes = true;
                 }
-            } else if (GetPart(10)?.item?.mainHandler != null) {
-                ChangeMode<CannonMode>();
-            } else if (item.handlers.Any(handler => handler.playerHand.controlHand.alternateUsePressed)) {
-                if (!buttonWasPressed) {
-                    buttonWasPressed = true;
-                    lastButtonPress = Time.time;
-                }
-                locking = true;
-                // Trigger behaviour
-                if (item.handlers.Any(handler => handler.playerHand.controlHand.usePressed)) {
-                    if (item.handlers.Where(hand => hand.playerHand.controlHand.usePressed).Count() > 1) {
-                        buttonHand = item.mainHandler;
-                    } else {
-                        buttonHand = item.handlers.Where(hand => hand.playerHand.controlHand.usePressed).FirstOrDefault();
-                    }
-                    ChangeMode<ShieldMode>();
-                } else {
-                    ChangeMode<ExpandedMode>();
-                }
-            } else {
-                ChangeMode<SwordMode>();
-                // Drop parts on button tap
-                if (buttonWasPressed) {
-                    if (Time.time - lastButtonPress < BUTTON_TAP_THRESHOLD) {
-                        locking = !wasLocking;
-                        if (locking) {
-                            ReformParts();
-                        } else {
-                            DetachParts();
+            }
+
+            if (!changedModes) {
+                if (item.handlers.Any(handler => handler.playerHand.controlHand.alternateUsePressed)) {
+                    if (!buttonWasPressed) {
+                        buttonWasPressed = true;
+                        lastButtonPress = Time.time;
+                        foreach (var handler in item.handlers) {
+                            orgAxisLength = item.mainHandleLeft.axisLength;
+                            item.mainHandleLeft.axisLength = 0;
                         }
-                        wasLocking = locking;
-                    } else {
-                        wasLocking = true;
                     }
+                    locking = true;
+                    // Trigger behaviour
+                    if (item.handlers.Any(handler => handler.playerHand.controlHand.usePressed)) {
+                        if (item.handlers.Where(hand => hand.playerHand.controlHand.usePressed).Count() > 1) {
+                            buttonHand = item.mainHandler;
+                        } else {
+                            buttonHand = item.handlers.Where(hand => hand.playerHand.controlHand.usePressed).FirstOrDefault();
+                        }
+                        ChangeMode<ShieldMode>();
+                    } else {
+                        ChangeMode<ExpandedMode>();
+                    }
+                } else {
+                    ChangeMode<SwordMode>();
+                    // Drop parts on button tap
+                    if (buttonWasPressed) {
+                        if (Time.time - lastButtonPress < BUTTON_TAP_THRESHOLD) {
+                            locking = !wasLocking;
+                            if (locking) {
+                                ReformParts();
+                            } else {
+                                DetachParts();
+                            }
+                            wasLocking = locking;
+                        } else {
+                            wasLocking = true;
+                        }
+                        foreach (var handler in item.handlers) {
+                            item.mainHandleLeft.axisLength = orgAxisLength;
+                        }
+                    }
+                    buttonWasPressed = false;
                 }
-                buttonWasPressed = false;
             }
             mode?.Update();
         }
@@ -342,14 +371,73 @@ namespace Shatterblade {
             }
         }
         public bool ShouldReform(BladePart part) => locking && (mode?.ShouldReform(part) ?? true);
+        public bool ShouldPartLock(BladePart part) => locking && (mode?.ShouldLock(part) ?? true);
+        public void ModifyJoint(BladePart part) => mode?.JointModifier(part.joint, part);
         public BladePart GetPart(int index) => parts.FirstOrDefault(part => part.item.itemId == $"ShatterbladePart{index}");
         public Rigidbody GetRB(int index) => jointRBs.FirstOrDefault(rb => rb.name == $"Blade_{index}");
     }
-    public abstract class BladeMode {
+
+    /// <summary>
+    /// Base class for every mode of the Shatterblade.
+    /// If you're using this: good luck. I would recommend
+    /// decompiling the source, or DM'ing me - I'd be happy to help!
+    /// </summary>
+    public abstract class BladeMode : ItemModule {
+
+        /// <summary>
+        /// Called when the item is first spawned. You likely don't want to touch this.
+        /// </summary>
+        /// <param name="item"></param>
+        public override void OnItemLoaded(Item item) {
+            base.OnItemLoaded(item);
+            if (item.GetComponent<Shatterblade>() is Shatterblade shatterblade) {
+                shatterblade.RegisterMode(this);
+            }
+        }
+
+        /// <summary>
+        /// The sword this mode is running on.
+        /// </summary>
         public Shatterblade sword;
+
+        /// <returns>This should return true if the mode should be entered, and should only return false when it should be exited.</returns>
+        /// <param name="sword">The Shatterblade to which this mode is attached.</param>
+        public abstract bool Test(Shatterblade sword);
+
+        /// <summary>
+        /// Called when the mode is first entered.
+        /// </summary>
+        /// <param name="sword">The Shatterblade to which this mode is attached. This is passed into BladeMode.sword.</param>
         public virtual void Enter(Shatterblade sword) => this.sword = sword;
+
+        /// <summary>
+        /// Called once per frame while the mode is active.
+        /// </summary>
         public virtual void Update() { }
+
+        /// <summary>
+        /// Called once when the state is exited.
+        /// </summary>
         public virtual void Exit() { }
+
+        /// <summary>
+        /// Given a part, defines whether the part should attempt to navigate to its target position.
+        ///
+        /// If your ability throws a part, make sure that this returns false while the part is in the air!
+        /// </summary>
         public virtual bool ShouldReform(BladePart part) => true;
+
+        /// <summary>
+        /// Given a part, defines whether the part should attempt to hard lock to the part. You likely won't need this.
+        /// </summary>
+        public virtual bool ShouldLock(BladePart part) => true;
+
+        /// <summary>
+        /// This function is called after a blade shard creates or updates its joint.
+        /// This is a powerful tool for customizing how the shards move, but you likely won't need to use it.
+        /// </summary>
+        /// <param name="joint">The joint that was created or updated.</param>
+        /// <param name="part">The part that owns the joint in question.</param>
+        public virtual void JointModifier(ConfigurableJoint joint, BladePart part) { }
     }
 }

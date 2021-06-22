@@ -1,22 +1,28 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using UnityEngine;
 using ThunderRoad;
 using ExtensionMethods;
+using Newtonsoft.Json;
 using Technie.PhysicsCreator;
 using UnityEngine.AddressableAssets;
+using Random = UnityEngine.Random;
 
-namespace Shatterblade {
-    class FlamethrowerMode : ImbueMode {
-        float rotation;
-        EffectInstance flameEffect;
+namespace Shatterblade.Modes {
+    class FlamethrowerMode : SpellMode<SpellCastProjectile> {
+        private float rotation;
+        private EffectInstance flameEffect;
+        private EffectData revealFire;
         private List<EffectInstance> fireballEffects;
         private List<GameObject> fireballTargets;
+        public override void OnItemLoaded(Item item) { base.OnItemLoaded(item); }
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
             fireballEffects = new List<EffectInstance>();
             fireballTargets = new List<GameObject>();
+            revealFire = Catalog.GetData<EffectData>("ShatterbladeRevealFire");
         }
 
         Vector3 NormalPos(int i) {
@@ -100,31 +106,44 @@ namespace Shatterblade {
                 if (flameEffect != null) {
                     flameEffect.SetPosition(sword.GetRB(1).transform.position);
                     flameEffect.SetRotation(Quaternion.LookRotation(ForwardDir(), UpDir()));
-                    foreach (var creature in Utils.ConeCastCreature(Center(), 1, ForwardDir(), 5, 30, true, true)) {
-                        creature.Damage(new CollisionInstance(new DamageStruct(DamageType.Energy, 1f)));
+                    var creaturesHit = new List<Creature>();
+                    foreach (var hit in Utils.ConeCastAll(Center(), 0.01f, ForwardDir() + Utils.RandomVector(-0.1f, 0.1f), 3, 10)) {
+                        if (hit.rigidbody?.gameObject.GetComponent<RagdollPart>() is RagdollPart part) {
+                            if (part.ragdoll.creature is Creature creature && !creature.isPlayer) {
+                                if (!creaturesHit.Contains(part.ragdoll.creature)) {
+                                    sword.RunAfter(() => {
+                                        creaturesHit.Add(creature);
+                                        var collisionInstance
+                                            = new CollisionInstance(new DamageStruct(DamageType.Energy, 0f)
+                                                { hitRagdollPart = part });
+                                        collisionInstance.targetColliderGroup = part.colliderGroup;
+                                        collisionInstance.contactPoint = hit.point;
+                                        collisionInstance.contactNormal = hit.normal;
+                                        collisionInstance.casterHand = Hand().caster;
+                                        collisionInstance.hasEffect = true;
+                                        collisionInstance.active = true;
+                                        var effect = revealFire.Spawn(hit.point,
+                                            Quaternion.AngleAxis(Random.Range(0, 360), hit.normal), part.transform,
+                                            collisionInstance);
+                                        effect.SetIntensity(Random.Range(0.5f, 1f));
+                                        effect.Play();
+                                        creature.Damage(collisionInstance);
+                                    }, 0.5f);
+                                }
+                            }
+                        }
                     }
                 }
-
-                FireSpheres();
             }
         }
 
         public void FireSpheres() {
-            var projectileMaterial = Catalog.GetData<MaterialData>("Projectile");
-            Addressables.LoadAssetAsync<PhysicMaterial>("Lyneca.Shatterblade.ProjectileMaterial")
-                .Completed += handle => {
-                    for (int i = 0; i < 10; i++) {
-                        var sphere = new GameObject();
-                        sphere.transform.position = Center() + ForwardDir() * 0.3f;
-                        var collider = sphere.AddComponent<SphereCollider>();
-                        collider.radius = 0.1f;
-                        collider.material = handle.Result;
-                        var rb = sphere.AddComponent<Rigidbody>();
-                        rb.useGravity = false;
-                        rb.AddForce(ForwardDir() * 30f, ForceMode.Impulse);
-                        sword.RunAfter(() => Object.Destroy(sphere), 1f);
-                    }
-                };
+            Catalog.GetData<ItemData>("FireSphere").SpawnAsync(sphere => {
+                sphere.transform.position = Center() + ForwardDir() * 0.3f;
+                sphere.rb.useGravity = false;
+                sphere.rb.AddForce(ForwardDir() * 10f, ForceMode.Impulse);
+                sphere.Despawn(1.5f);
+            });
         }
 
         public void EndEffects() {
@@ -149,9 +168,10 @@ namespace Shatterblade {
                     component.deflectEffectData = Catalog.GetData<EffectData>("HitFireBallDeflect");
                     component.imbueBladeEnergyTransfered = 0;
                     component.imbueSpellCastCharge = null;
-                    component.Fire(ForwardDir() * 30, Catalog.GetData<EffectData>("SpellFireball"));
+                    component.Fire(Utils.HomingThrow(projectile, ForwardDir() * 30, 10f),
+                        Catalog.GetData<EffectData>("SpellFireball"));
                 } else {
-                    projectile.rb.AddForce(ForwardDir() * 30, ForceMode.Impulse);
+                    projectile.rb.AddForce(Utils.HomingThrow(projectile, ForwardDir() * 30, 10f), ForceMode.Impulse);
                     projectile.Throw(flyDetection: Item.FlyDetection.Forced);
                 }
             });
@@ -196,9 +216,13 @@ namespace Shatterblade {
             }
         }
 
-        public override string GetUseAnnotation() => "Pull trigger to burn your foes";
-
+        public override string GetUseAnnotation() => IsButtonPressed()
+            ? (IsTriggerPressed() && Time.time - lastTriggerPress > 1f ? "Release to fire!" : "Pull trigger to charge fireballs!")
+            : "Pull trigger to burn your foes";
         public override bool GetUseAnnotationShown() => true;
+
+        public override string GetAltUseAnnotation() => "Hold button to switch modes";
+        public override bool GetAltUseAnnotationShown() => !IsButtonPressed();
 
         public override void Update() {
             base.Update();
@@ -207,6 +231,7 @@ namespace Shatterblade {
         public override void Exit() {
             base.Exit();
             flameEffect?.End();
+            CancelFireballs();
         }
 
         public override bool ShouldReform(BladePart part) => part != sword.GetPart(11);

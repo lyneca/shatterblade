@@ -5,47 +5,40 @@ using ThunderRoad;
 using ExtensionMethods;
 
 namespace Shatterblade.Modes {
-    class CannonMode : BladeMode {
+    class CannonMode : GrabbedShardMode {
         public List<Rigidbody> magazine;
         Rigidbody chamberedRound;
         float lastShot;
         float lastReload;
-        bool buttonWasPressed = false;
         EffectInstance spinEffect;
         float rotation = 0;
-        float lastButtonPressed;
         RagdollHand lastHand;
-        private Annotation fireAnnotation;
-        private Annotation burstAnnotation;
         private bool reloading;
 
+        public override int TargetPartNum() => 10;
+
+        public override Vector3 Center() {
+            return Hand().transform.position + UpDir() * 0.1f;
+        }
+
         public override void Enter(Shatterblade sword) {
-            base.Enter(sword);
-            spinEffect = Catalog.GetData<EffectData>("ShatterbladeSpin").Spawn(GetHand().transform.position + GetHand().ThumbDir() * 0.1f, Quaternion.identity, null, null, false);
-            sword.shouldLock = false;
-            sword.animator.enabled = false;
-            sword.jointRBs.ForEach(rb => rb.transform.parent = null);
             magazine = sword.jointRBs
                 .Where(rb => rb.name != "Blade_1")
                 .Where(rb => rb.name != "Blade_10")
                 .ToList();
-            sword.ReformParts();
-            sword.GetPart(10).Detach();
+            base.Enter(sword);
+            spinEffect = Catalog.GetData<EffectData>("ShatterbladeSpin").Spawn(Center(), Quaternion.identity, null, null, false);
             sword.IgnoreRagdoll(Player.currentCreature.ragdoll, true);
-            lastHand = GetHand();
+            lastHand = Hand();
             ChamberRound();
-            fireAnnotation = Annotation.CreateAnnotation(sword, sword.GetPart(10).transform,
-                sword.GetPart(10).transform, GetFireAnnotationPosition());
-            burstAnnotation = Annotation.CreateAnnotation(sword, sword.GetPart(10).transform,
-                sword.GetPart(10).transform, GetBurstAnnotationPosition());
-            sword.HideAllAnnotations();
         }
 
-        public Vector3 GetFireAnnotationPosition()
-            => GetHand().side == Side.Left ? new Vector3(1, 0.7f, 1) : new Vector3(1, 0.7f, -1);
-        public Vector3 GetBurstAnnotationPosition()
-            => GetHand().side == Side.Left ? new Vector3(-1, 0.7f, 1) : new Vector3(-1, 0.7f, -1);
-        public RagdollHand GetHand() => sword.GetPart(10).item.handlers.FirstOrDefault();
+        public override string GetUseAnnotation() => "Pull trigger to fire";
+
+        public override string GetAltUseAnnotation() => IsButtonPressed()
+            ? "Pull trigger to burst fire"
+            : "Hold Oculus A/X to charge up a burst shot";
+
         public void Reload() {
             if (Time.time - lastReload <= 1)
                 return;
@@ -70,7 +63,7 @@ namespace Shatterblade.Modes {
         }
         public void Fire(Rigidbody round) {
             sword.rbMap[round].Detach();
-            sword.rbMap[round].item.rb.AddForce(Utils.HomingThrow(sword.rbMap[round].item, AimDir() * 60f, 30), ForceMode.Impulse);
+            sword.rbMap[round].item.rb.AddForce(Utils.HomingThrow(sword.rbMap[round].item, ForwardDir() * 60f, 30), ForceMode.Impulse);
             sword.rbMap[round].item.Throw(1, Item.FlyDetection.Forced);
         }
         public void Fire() {
@@ -79,57 +72,85 @@ namespace Shatterblade.Modes {
             chamberedRound = null;
             ChamberRound();
         }
-        Vector3 AimDir() => GetHand().PointDir();
-        Vector3 UpDir() => GetHand().ThumbDir();
-        Vector3 GetPosition(float index) {
-            return GetHand().transform.position + GetHand().ThumbDir() * 0.1f
-                 + Quaternion.AngleAxis(
-                     index / magazine.Count() * 360
-                     + rotation, AimDir())
-                 * UpDir() * (GetHand().playerHand.controlHand.alternateUsePressed ? 0.2f : 0.3f);
+
+        public override Vector3 GetPos(int index, Rigidbody rb, BladePart part) {
+            if (rb == chamberedRound) {
+                return Center() + UpDir() * 0.05f;
+            } else if (index == 1) {
+                return Hand().transform.position + Hand().ThumbDir() * 0.07f + Center() + ForwardDir() * 0.2f;
+            } else if (magazine.Any()){
+                return Center()
+                       + Quaternion.AngleAxis(
+                           index / magazine.Count() * 360
+                           + rotation, ForwardDir())
+                       * UpDir()
+                       * (IsButtonPressed() ? 0.2f : 0.3f);
+            } else {
+                return Center()
+                       + UpDir()
+                       * (IsButtonPressed() ? 0.2f : 0.3f);
+            }
         }
+
+        public override Quaternion GetRot(int index, Rigidbody rb, BladePart part) {
+            if (rb == chamberedRound) {
+                return Quaternion.LookRotation(ForwardDir(), UpDir());
+            } else if (index == 1) {
+                return Quaternion.LookRotation(ForwardDir(), SideDir());
+            } else {
+                return Quaternion.LookRotation(ForwardDir(), rb.transform.position - Center());
+            }
+        }
+
+        public override void OnButtonHeld() {
+            base.OnButtonHeld();
+            rotation += Time.deltaTime
+                * Mathf.Lerp(20, 400, Mathf.Clamp01(Time.time - lastButtonPress) * 2);
+        }
+
+        public override void OnButtonNotHeld() {
+            base.OnButtonNotHeld();
+            rotation += Time.deltaTime
+                * Mathf.Lerp(400, 80, Mathf.Clamp01((Time.time - lastShot) * 0.5f));
+        }
+
+        public override void OnButtonPressed() {
+            base.OnButtonPressed();
+            spinEffect = Catalog.GetData<EffectData>("ShatterbladeSpin").Spawn(Center(), Quaternion.identity, null, null, false);
+            spinEffect.Play();
+        }
+
+        public override void OnButtonReleased() {
+            base.OnButtonReleased();
+            spinEffect.End();
+        }
+
+        public override void OnTriggerHeld() {
+            base.OnTriggerHeld();
+            if (Time.time - lastShot > 0.4f) {
+                Fire();
+                if (IsButtonPressed()) {
+                    lastShot = Time.time - 0.35f;
+                } else {
+                    lastShot = Time.time;
+                }
+            }
+        }
+
+        public override void OnTriggerReleased() {
+            base.OnTriggerReleased();
+            lastShot = 0;
+        }
+
         public override void Update() {
             base.Update();
-            if (GetHand() != lastHand) {
+            if (Hand() != lastHand) {
                 sword.IgnoreCollider(lastHand, false);
-                lastHand = GetHand();
+                lastHand = Hand();
                 sword.IgnoreCollider(lastHand, true);
             }
 
-            fireAnnotation.offset = GetFireAnnotationPosition();
-            burstAnnotation.offset = GetBurstAnnotationPosition();
-            if (GetHand().playerHand.controlHand.alternateUsePressed) {
-                rotation += Time.deltaTime
-                    * Mathf.Lerp(20, 400, Mathf.Clamp01(Time.time - lastButtonPressed) * 2);
-                fireAnnotation.SetText("Pull trigger to burst fire");
-                burstAnnotation.Hide();
-            } else {
-                fireAnnotation.SetText("Pull trigger to fire");
-                burstAnnotation.SetText("Hold Oculus A/X to charge up a burst shot");
-                rotation += Time.deltaTime
-                    * Mathf.Lerp(400, 80, Mathf.Clamp01((Time.time - lastShot) * 0.5f));
-            }
-            // 'magazine'
-            foreach (var bullet in magazine) {
-                bullet.transform.position = GetPosition(magazine.IndexOf(bullet));
-                bullet.transform.rotation = Quaternion.LookRotation(GetHand().PointDir(), bullet.transform.position - GetHand().transform.position)
-                      * Quaternion.Inverse(sword.rbMap[bullet].item.GetFlyDirRefLocalRotation());
-            }
-            // gun 'barrel'
-            if (sword.GetPart(1) is BladePart partOne && sword.partMap[partOne]) {
-                sword.partMap[partOne].transform.position = GetHand().transform.position + GetHand().ThumbDir() * 0.07f + GetHand().PointDir() * 0.2f;
-                sword.partMap[partOne].transform.rotation
-                    = Quaternion.LookRotation(AimDir(), GetHand().PalmDir())
-                    * Quaternion.Inverse(partOne.item.GetFlyDirRefLocalRotation());
-;
-            }
-            // bullet
-            if (chamberedRound && sword.rbMap[chamberedRound]?.transform?.rotation != null) {
-                chamberedRound.transform.position = GetHand().transform.position + GetHand().ThumbDir() * 0.15f;
-                chamberedRound.transform.rotation = Quaternion.LookRotation(AimDir(), UpDir())
-                    * Quaternion.Inverse(sword.rbMap[chamberedRound].item.GetFlyDirRefLocalRotation());
-            }
-            spinEffect.SetPosition(GetHand().transform.position + GetHand().ThumbDir() * 0.1f);
+            spinEffect.SetPosition(Center());
             if (!magazine.Any() && !chamberedRound) {
                 Reload();
             }
@@ -143,36 +164,11 @@ namespace Shatterblade.Modes {
             }
             if (chamberedRound == null)
                 ChamberRound();
-            if (GetHand().playerHand.controlHand.alternateUsePressed) {
-                if (!buttonWasPressed) {
-                    buttonWasPressed = true;
-                    lastButtonPressed = Time.time;
-                    spinEffect = Catalog.GetData<EffectData>("ShatterbladeSpin").Spawn(GetHand().transform.position + GetHand().ThumbDir() * 0.1f, Quaternion.identity, null, null, false);
-                    spinEffect.Play();
-                }
-            } else {
-                buttonWasPressed = false;
-                spinEffect.End();
-            }
-            if (GetHand().playerHand.controlHand.usePressed) {
-                if (Time.time - lastShot > 0.4f) {
-                    Fire();
-                    if (GetHand().playerHand.controlHand.alternateUsePressed) {
-                        lastShot = Time.time - 0.35f;
-                    } else {
-                        lastShot = Time.time;
-                    }
-                }
-            } else {
-                lastShot = 0;
-            }
         }
         public override void Exit() {
             base.Exit();
             sword.jointRBs.ForEach(rb => rb.transform.parent = sword.animator.transform);
             sword.animator.enabled = true;
-            fireAnnotation.Destroy();
-            burstAnnotation.Destroy();
             spinEffect?.Despawn();
             sword.IgnoreRagdoll(Player.currentCreature.ragdoll, false);
             sword.shouldLock = true;

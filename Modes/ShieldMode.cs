@@ -9,6 +9,7 @@ using ExtensionMethods;
 
 namespace Shatterblade {
     class ShieldMode : BladeMode {
+        public override bool Test(Shatterblade sword) => false;
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
             sword.animator.SetBool("IsExpanded", false);
@@ -18,7 +19,7 @@ namespace Shatterblade {
             sword.handleAnnotationA.Hide();
             sword.handleAnnotationB.Hide();
             sword.imbueHandleAnnotation.Hide();
-            sword.imbueShardAnnotation.Hide();
+            sword.otherHandAnnotation.Hide();
             sword.gunShardAnnotation.Hide();
         }
         public override void Exit() {

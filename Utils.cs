@@ -527,6 +527,13 @@ static class Utils {
             (float)rand.NextDouble() * (max - min) + min);
     }
 
+    public static Vector3 RandomVector(float min = -1, float max = 1, int salt = 0) {
+        return new Vector3(
+            UnityEngine.Random.Range(0f, 1f) * (max - min) + min,
+            UnityEngine.Random.Range(0f, 1f) * (max - min) + min,
+            UnityEngine.Random.Range(0f, 1f) * (max - min) + min);
+    }
+
     /// <summary>
     /// Set a private field from an object
     /// </summary>

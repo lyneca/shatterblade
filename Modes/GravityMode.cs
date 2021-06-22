@@ -1,19 +1,21 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Linq;
 using UnityEngine;
 using ThunderRoad;
 using ExtensionMethods;
 using Object = UnityEngine.Object;
 
-namespace Shatterblade {
-    class GravityMode : ImbueMode {
+namespace Shatterblade.Modes {
+    class GravityMode : SpellMode<SpellCastGravity> {
         float rotation;
         Item targetItem;
         ConfigurableJoint joint;
         Rigidbody targetPoint;
         float effectIntensity;
         EffectInstance effect;
-
+        private float lastHeldRadius;
+        public override void OnItemLoaded(Item item) { base.OnItemLoaded(item); }
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
             targetPoint = new GameObject().AddComponent<Rigidbody>();
@@ -50,6 +52,9 @@ namespace Shatterblade {
             }
         }
         void UpdateEffectParams(EffectInstance effect, float intensity, Vector3 position, Quaternion rotation) {
+            if (effect == null) {
+                return;
+            }
             effect.SetIntensity(intensity);
             effect.SetScale(Vector3.one * HeldRadius() * intensity * 2);
             effect.SetPosition(position);
@@ -78,7 +83,16 @@ namespace Shatterblade {
             Utils.PushForce(Hand().transform.position + ForwardDir() * 1, ForwardDir(), 1, 4, ForwardDir() * 50, true, true);
         }
         public bool HoldingSomething() => targetItem != null;
-        public float HeldRadius() => Mathf.Min((targetItem?.GetRadius() + 0.1f) ?? 0.5f, 2f);
+
+        public float HeldRadius() {
+            if (targetItem) {
+                lastHeldRadius = Mathf.Min((targetItem?.GetRadius() + 0.1f) ?? 0.5f, 2f);
+                return lastHeldRadius;
+            } else {
+                return lastHeldRadius;
+            }
+        }
+
         public Vector3 HeldCenter() => targetItem.rb.worldCenterOfMass;
 
         public Vector3 PincerPos(int i) {
@@ -207,6 +221,9 @@ namespace Shatterblade {
                 }
                 rotation += Time.deltaTime * Mathf.Lerp(80, 300, Mathf.Clamp01((Time.time - lastTriggerPress) * (1f / 1f)));
             } else {
+                effectIntensity = Mathf.Max(effectIntensity - Time.deltaTime * 3f, 0);
+                UpdateEffectParams(effect, effectIntensity, Center() + ForwardDir() * (0.2f + HeldRadius() * 1.5f),
+                    Quaternion.identity);
                 rotation += Time.deltaTime * 80;
             }
         }

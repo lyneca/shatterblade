@@ -20,6 +20,7 @@ namespace Shatterblade {
         float lastUnlockTime;
         public bool wasInHolder;
         private Vector3 lastSwordScale;
+        private float lastUngrab = 0f;
 
         public PartState state;
 
@@ -31,11 +32,13 @@ namespace Shatterblade {
             item = GetComponent<Item>();
             item.disallowDespawn = true;
             item.OnGrabEvent += (handle, hand) => Detach();
+            item.OnUngrabEvent += (handle, hand, throwing) => lastUngrab = Time.time;
             item.OnDespawnEvent += () => {
                 targetPoint = null;
                 sword.parts.Remove(this);
             };
-            item?.colliderGroups?.ForEach(cg => cg.data?.modifiers?.ForEach(modifier => modifier.imbueRate = 2.0f));
+            item.colliderGroups.ForEach(cg => cg.data.modifiers.ForEach(modifier => modifier.imbueRate = 2.0f));
+            item.mainHandleLeft.touchRadius = 0.1f;
         }
 
         public void DeInit() {
@@ -59,19 +62,33 @@ namespace Shatterblade {
                         foreach (var collider in part.colliderGroup.colliders)
                             Physics.IgnoreCollision(thisCollider, collider, ignore);
         }
-        public void IgnoreHand(RagdollHand hand, bool ignore) {
-            foreach (var otherCollider in hand.colliderGroup.colliders)
-                foreach (var cg in item.colliderGroups)
-                    foreach (var collider in cg.colliders)
-                        Physics.IgnoreCollision(collider, otherCollider, ignore);
-            foreach (var otherCollider in hand.lowerArmPart.colliderGroup.colliders)
-                foreach (var cg in item.colliderGroups)
-                    foreach (var collider in cg.colliders)
-                        Physics.IgnoreCollision(collider, otherCollider, ignore);
-            foreach (var otherCollider in hand.upperArmPart.colliderGroup.colliders)
-                foreach (var cg in item.colliderGroups)
-                    foreach (var collider in cg.colliders)
-                        Physics.IgnoreCollision(collider, otherCollider, ignore);
+        public void IgnoreHand(RagdollHand hand, bool ignore, float delay = 0) {
+            this.RunAfter(() => {
+                if (item.mainHandler == hand) return;
+                foreach (var otherCollider in hand.colliderGroup.colliders) {
+                    foreach (var cg in item.colliderGroups) {
+                        foreach (var collider in cg.colliders) {
+                            Physics.IgnoreCollision(collider, otherCollider, ignore);
+                        }
+                    }
+                }
+
+                foreach (var otherCollider in hand.lowerArmPart.colliderGroup.colliders) {
+                    foreach (var cg in item.colliderGroups) {
+                        foreach (var collider in cg.colliders) {
+                            Physics.IgnoreCollision(collider, otherCollider, ignore);
+                        }
+                    }
+                }
+
+                foreach (var otherCollider in hand.upperArmPart.colliderGroup.colliders) {
+                    foreach (var cg in item.colliderGroups) {
+                        foreach (var collider in cg.colliders) {
+                            Physics.IgnoreCollision(collider, otherCollider, ignore);
+                        }
+                    }
+                }
+            }, delay);
         }
 
         /// <summary>
@@ -152,16 +169,16 @@ namespace Shatterblade {
             var initialEmissive = new Dictionary<Renderer, Color>();
             item.renderers.ForEach(renderer
                 => initialEmissive[renderer] = renderer.material.GetColor("_EmissionColor"));
-            const float duration = 0.2f;
+            const float duration = 0.5f;
             Color targetColor = Color.HSVToRGB(Random.Range(0f, 1f), 1, 100, true);
             while (Time.time - start < duration) {
                 float value = Mathf.Sin(Mathf.PI * (Time.time - start) / duration);
                 item.renderers.ForEach(renderer => {
-                    //renderer.material.SetColor("_EmissionColor",
-                    //    Color.Lerp(initialEmissive[renderer], new Color(0, 5, 10),
-                    //        Mathf.Sin(Mathf.PI * (Time.time - start) / duration)));
-                    renderer.material.SetFloat("_Smoothness", Mathf.Lerp(0.5f, 1, value));
-                    renderer.material.SetFloat("_OcclusionStrength", Mathf.Lerp(0.5f, 1, value));
+                    renderer.material.SetColor("_EmissionColor",
+                        Color.Lerp(initialEmissive[renderer], new Color(8, 0, 20),
+                            Mathf.Sin(Mathf.PI * (Time.time - start) / duration)));
+                    //renderer.material.SetFloat("_Smoothness", Mathf.Lerp(0.5f, 1, value));
+                    //renderer.material.SetFloat("_OcclusionStrength", Mathf.Lerp(0.5f, 1, value));
                 });
                 yield return 0;
             }
@@ -191,7 +208,7 @@ namespace Shatterblade {
                 return;
             }
 
-            if (sword.item.transform.localScale != lastSwordScale) {
+            if (sword.item.holder == null && sword.item.transform.localScale != lastSwordScale) {
                 item.transform.localScale = sword.item.transform.localScale;
                 lastSwordScale = sword.item.transform.localScale;
                 Detach();
@@ -199,7 +216,8 @@ namespace Shatterblade {
             }
 
             ForAllRenderers(renderer => renderer.material.SetVector("WorldPos", item.transform.position));
-            item.SetColliderLayer(GameManager.GetLayer(LayerName.PlayerHandAndFoot));
+            if (Time.time - lastUngrab > 1f)
+                item.SetColliderLayer(GameManager.GetLayer(LayerName.PlayerHandAndFoot));
             item.SetMeshLayer(GameManager.GetLayer(LayerName.MovingObject));
             //if (state == PartState.Reforming) {
             //    item.SetColliderAndMeshLayer(GameManager.GetLayer(LayerName.NPCGrabbedObject));
@@ -263,6 +281,7 @@ namespace Shatterblade {
                             item.rb.isKinematic = false;
                             item.transform.SetParent(null);
                             Show();
+                            Reform();
                         }
                     }
                 }
@@ -273,7 +292,8 @@ namespace Shatterblade {
                         }
                     }
                     if (Vector3.Distance(transform.position, targetPoint.transform.position) < 0.1f
-                     && Quaternion.Angle(transform.rotation, targetPoint.transform.rotation) < 10f) {
+                     && Quaternion.Angle(transform.rotation, targetPoint.transform.rotation) < 10f
+                     && sword.ShouldPartLock(this)) {
                         state = PartState.Locked;
                         item.mainHandleLeft.SetTelekinesis(false);
                         if (!(sword.mode is CannonMode))
@@ -324,6 +344,7 @@ namespace Shatterblade {
         /// </summary>
         public void Detach(bool shouldThrow = false) {
             state = PartState.Free;
+            item.mainHandleLeft.SetTelekinesis(true);
             item.mainCollisionHandler.RemovePhysicModifier(this);
             if (shouldThrow)
                 item.rb.velocity = sword.item.rb.GetPointVelocity(targetPoint.transform.position) * 3f;
@@ -346,12 +367,13 @@ namespace Shatterblade {
 
         public void LockJoint() {
             JointDrive posDrive = joint.xDrive;
-            posDrive.positionSpring = 10000000;
-            posDrive.positionDamper = 1000;
+            posDrive.positionSpring = 1000000;
+            posDrive.positionDamper = 4000;
             posDrive.maximumForce = Mathf.Infinity;
             joint.xDrive = posDrive;
             joint.yDrive = posDrive;
             joint.zDrive = posDrive;
+            sword.ModifyJoint(this);
         }
 
         /// <summary>
@@ -359,7 +381,7 @@ namespace Shatterblade {
         /// </summary>
         /// <param name="factor">The factor to scale to</param>
         public void SetDriveFactor(float factor) {
-            item.mainCollisionHandler.SetPhysicModifier(this, 4, 0, 1, 0.1f);
+            //item.mainCollisionHandler.SetPhysicModifier(this, 4, 0, 1, 0.1f);
             JointDrive posDrive = joint.xDrive;
             posDrive.positionSpring = 2000;
             posDrive.positionDamper = Mathf.Lerp(20, 100, factor);
@@ -367,6 +389,7 @@ namespace Shatterblade {
             joint.xDrive = posDrive;
             joint.yDrive = posDrive;
             joint.zDrive = posDrive;
+            sword.ModifyJoint(this);
         }
 
         /// <summary>
@@ -413,6 +436,7 @@ namespace Shatterblade {
             joint.xMotion = ConfigurableJointMotion.Free;
             joint.yMotion = ConfigurableJointMotion.Free;
             joint.zMotion = ConfigurableJointMotion.Free;
+            sword.ModifyJoint(this);
         }
 
         /// <summary>

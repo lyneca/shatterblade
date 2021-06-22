@@ -9,6 +9,8 @@ using ExtensionMethods;
 
 namespace Shatterblade.Modes {
     class ExpandedMode : BladeMode {
+        public override bool Test(Shatterblade sword) => false;
+
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
             sword.animator.SetBool("IsExpanded", true);
@@ -20,7 +22,7 @@ namespace Shatterblade.Modes {
             sword.handleAnnotationA.SetText("Release A/X to retract the blade");
             sword.handleAnnotationB.SetText("Hold Trigger to form a shield");
             sword.imbueHandleAnnotation.Hide();
-            sword.imbueShardAnnotation.Hide();
+            sword.otherHandAnnotation.Hide();
             sword.gunShardAnnotation.Hide();
         }
 

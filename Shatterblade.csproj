@@ -34,6 +34,14 @@
     <Reference Include="Assembly-CSharp">
       <HintPath>..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Blade &amp; Sorcery\BladeAndSorcery_Data\Managed\Assembly-CSharp.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json, Version=12.0.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\Games\Steam\steamapps\common\Blade &amp; Sorcery\BladeAndSorcery_Data\Managed\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json.UnityConverters, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\Games\Steam\steamapps\common\Blade &amp; Sorcery\BladeAndSorcery_Data\Managed\Newtonsoft.Json.UnityConverters.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -80,12 +88,15 @@
   <ItemGroup>
     <Compile Include="Annotation.cs" />
     <Compile Include="ConfigurableJointExtensions.cs" />
+    <Compile Include="Modes\CircularSawMode.cs" />
     <Compile Include="Modes\FlamethrowerMode.cs" />
+    <Compile Include="Modes\GrabbedShardMode.cs" />
     <Compile Include="Modes\GravityMode.cs" />
-    <Compile Include="Modes\ImbueMode.cs" />
+    <Compile Include="Modes\SpellMode.cs" />
     <Compile Include="Modes\LightningMode.cs" />
     <Compile Include="Modes\CannonMode.cs" />
     <Compile Include="Modes\ExpandedMode.cs" />
+    <Compile Include="Modes\SwarmMode.cs" />
     <Compile Include="Shatterblade.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BladePart.cs" />

@@ -12,18 +12,18 @@ using ThunderRoad;
 using ExtensionMethods;
 using Random = UnityEngine.Random;
 
-namespace Shatterblade {
-    class LightningMode : ImbueMode {
+namespace Shatterblade.Modes {
+    class LightningMode : SpellMode<SpellCastLightning> {
         private float rotation;
         private GameObject target;
         private EffectInstance chargeEffect;
         private bool wasPressed;
 
+        public override void OnItemLoaded(Item item) { base.OnItemLoaded(item); }
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
             target = new GameObject();
         }
-
         float CooldownTime() => 1 - Mathf.Clamp01(Time.time - lastTriggerReleased);
 
         public override Vector3 GetPos(int index, Rigidbody rb, BladePart part) {
@@ -44,7 +44,7 @@ namespace Shatterblade {
                            + Quaternion.AngleAxis((index - 10) * (1f / 5f) * 360f + rotation * -1, ForwardDir())
                            * UpDir()
                            * (0.1f + CooldownTime() * 0.1f)
-                           + Random.Range(-1f, 1f) * ForwardDir() * (IsTriggerPressed() ? 0.1f : 0) * (Time.time - lastTriggerPress);
+                           + Random.Range(-1f, 1f) * ForwardDir() * (IsTriggerPressed() ? 0.1f : 0) * Mathf.Clamp01(Time.time - lastTriggerPress);
             }
         }
 
@@ -146,6 +146,7 @@ namespace Shatterblade {
         }
 
         public override void Exit() {
+            chargeEffect?.End();
             base.Exit();
         }
     }
