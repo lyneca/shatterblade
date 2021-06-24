@@ -6,14 +6,17 @@ using ExtensionMethods;
 
 namespace Shatterblade.Modes {
     class CannonMode : GrabbedShardMode {
-        public List<Rigidbody> magazine;
+        public float fireRate = 0.4f;
+        public float fireVelocity = 60;
+
+        List<Rigidbody> magazine;
         Rigidbody chamberedRound;
         float lastShot;
         float lastReload;
         EffectInstance spinEffect;
         float rotation = 0;
         RagdollHand lastHand;
-        private bool reloading;
+        bool reloading;
 
         public override int TargetPartNum() => 10;
 
@@ -33,11 +36,11 @@ namespace Shatterblade.Modes {
             ChamberRound();
         }
 
-        public override string GetUseAnnotation() => "Pull trigger to fire";
+        public override bool GetUseAnnotationShown() => true;
+        public override string GetUseAnnotation() => IsButtonPressed() ? "Pull trigger to burst fire" : "Pull trigger to fire";
+        public override bool GetAltUseAnnotationShown() => !IsButtonPressed();
 
-        public override string GetAltUseAnnotation() => IsButtonPressed()
-            ? "Pull trigger to burst fire"
-            : "Hold Oculus A/X to charge up a burst shot";
+        public override string GetAltUseAnnotation() => "Hold Oculus A/X to charge up a burst shot";
 
         public void Reload() {
             if (Time.time - lastReload <= 1)
@@ -54,6 +57,7 @@ namespace Shatterblade.Modes {
             if (!magazine.Any())
                 return;
             chamberedRound = round;
+            Hand().HapticTick(0.2f, 100f);
             magazine.Remove(chamberedRound);
         }
         public void ChamberRound() {
@@ -62,11 +66,13 @@ namespace Shatterblade.Modes {
             ChamberRound(magazine[Random.Range(0, magazine.Count())]);
         }
         public void Fire(Rigidbody round) {
+            Hand().PlayHapticClipOver(AnimationCurve.EaseInOut(0, 1, 1, 0), 0.2f);
             sword.rbMap[round].Detach();
-            sword.rbMap[round].item.rb.AddForce(Utils.HomingThrow(sword.rbMap[round].item, ForwardDir() * 60f, 30), ForceMode.Impulse);
+            sword.rbMap[round].item.rb.AddForce(Utils.HomingThrow(sword.rbMap[round].item, ForwardDir() * fireVelocity, 30), ForceMode.Impulse);
             sword.rbMap[round].item.Throw(1, Item.FlyDetection.Forced);
         }
         public void Fire() {
+            if (!chamberedRound) return;
             Catalog.GetData<EffectData>("ShatterbladeShoot").Spawn(chamberedRound.position, chamberedRound.rotation, null, null, false).Play();
             Fire(chamberedRound);
             chamberedRound = null;
@@ -78,10 +84,10 @@ namespace Shatterblade.Modes {
                 return Center() + UpDir() * 0.05f;
             } else if (index == 1) {
                 return Hand().transform.position + Hand().ThumbDir() * 0.07f + Center() + ForwardDir() * 0.2f;
-            } else if (magazine.Any()){
+            } else if (magazine.Any()) {
                 return Center()
                        + Quaternion.AngleAxis(
-                           index / magazine.Count() * 360
+                           magazine.IndexOf(rb) * 360f / magazine.Count()
                            + rotation, ForwardDir())
                        * UpDir()
                        * (IsButtonPressed() ? 0.2f : 0.3f);
@@ -127,10 +133,10 @@ namespace Shatterblade.Modes {
 
         public override void OnTriggerHeld() {
             base.OnTriggerHeld();
-            if (Time.time - lastShot > 0.4f) {
+            if (Time.time - lastShot > fireRate) {
                 Fire();
                 if (IsButtonPressed()) {
-                    lastShot = Time.time - 0.35f;
+                    lastShot = Time.time - (fireRate - 0.05f);
                 } else {
                     lastShot = Time.time;
                 }

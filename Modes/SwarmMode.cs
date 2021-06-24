@@ -14,7 +14,7 @@ namespace Shatterblade.Modes {
         private Dictionary<int, Vector3> axes;
         private float rotation;
 
-        public override Vector3 Center() => base.Center() + ForwardDir() * 1.5f;
+        public override Vector3 Center() => base.Center() + ForwardDir() * 1.5f * (1 + Hand().playerHand.controlHand.useAxis);
 
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
@@ -27,20 +27,31 @@ namespace Shatterblade.Modes {
         }
         public override int TargetPartNum() => 13;
 
-        public override Vector3 GetPos(int index, Rigidbody rb, BladePart part) => Center()
-            + Quaternion.AngleAxis(rotation, axes[index])
-            * offsets[index]
-            * (IsButtonPressed() ? 0.2f : 1f);
+        public override Vector3 GetPos(int index, Rigidbody rb, BladePart part) {
+            float size = IsButtonPressed() ? 0.5f : 1f;
 
-        public override Quaternion GetRot(int index, Rigidbody rb, BladePart part)
-            => Quaternion.LookRotation(Center() - rb.transform.position, Vector3.up);
+            Vector3 pos = Utils.UniqueVector(rb.gameObject, -size, size);
+            Vector3 normal = Utils.UniqueVector(part.item.gameObject, -size, size, 1);
+            Quaternion handAngle = Quaternion.LookRotation(SideDir());
+            return Center() + handAngle * pos.Rotated(Quaternion.AngleAxis(Time.time * 120, normal));
+        }
+
+        public override Quaternion GetRot(int index, Rigidbody rb, BladePart part) {
+            float size = IsButtonPressed() ? 0.5f : 1f;
+            Vector3 pos = Utils.UniqueVector(rb.gameObject, -size, size);
+            pos = pos.normalized * (pos.magnitude + 0.2f);
+            Vector3 normal = Utils.UniqueVector(part.item.gameObject, -size, size, 1);
+            Quaternion handAngle = Quaternion.LookRotation(SideDir());
+            Vector3 facingDir = Center() + handAngle * pos.Rotated(Quaternion.AngleAxis(rotation, normal)) - rb.transform.position;
+            return Quaternion.LookRotation((Hand().Velocity() + facingDir).normalized);
+        }
         public override bool ShouldLock(BladePart part) => false;
 
         public override void JointModifier(ConfigurableJoint joint, BladePart part) {
             var posDrive = joint.xDrive;
-            posDrive.positionSpring = 80;
-            posDrive.positionDamper = 20f;
-            posDrive.maximumForce = Mathf.Infinity;
+            posDrive.positionSpring = 100;
+            posDrive.positionDamper = 10;
+            posDrive.maximumForce = 1000;
             joint.xDrive = posDrive;
             joint.yDrive = posDrive;
             joint.zDrive = posDrive;
@@ -48,11 +59,7 @@ namespace Shatterblade.Modes {
 
         public override void Update() {
             base.Update();
-            if (IsTriggerPressed()) {
-                rotation += Time.deltaTime * 200f;
-            } else {
-                rotation += Time.deltaTime * 40f;
-            }
+            rotation += Time.deltaTime * 200f * (1 + Hand().Velocity().magnitude / 3f);
         }
     }
 }

@@ -12,6 +12,10 @@ using Random = UnityEngine.Random;
 
 namespace Shatterblade.Modes {
     class FlamethrowerMode : SpellMode<SpellCastProjectile> {
+        public float flamethrowerDamage = 0.7f;
+        public float flamethrowerPushback = 5;
+        public float fireballChargeTime = 1f;
+
         private float rotation;
         private EffectInstance flameEffect;
         private EffectData revealFire;
@@ -97,38 +101,46 @@ namespace Shatterblade.Modes {
 
         public override void OnTriggerHeld() {
             base.OnTriggerHeld();
-            rotation += Time.deltaTime * Mathf.Lerp(80, 300, Mathf.Clamp01((Time.time - lastTriggerPress) * (1f / 1f)));
+            rotation += Time.deltaTime * Mathf.Lerp(80, 300, FireballChargeLerped());
             if (IsButtonPressed()) {
                 int i = 0;
                 fireballTargets.ForEach(target => target.transform.position = GetBasePos(i++) + ForwardDir() * 0.25f);
-                fireballEffects.ForEach(effect => effect.SetIntensity(Mathf.Clamp01(Time.time - lastTriggerPress)));
+                fireballEffects.ForEach(effect => effect.SetIntensity(FireballChargeLerped()));
+                Hand().HapticTick(FireballChargeLerped() * 0.5f);
             } else {
                 if (flameEffect != null) {
                     flameEffect.SetPosition(sword.GetRB(1).transform.position);
                     flameEffect.SetRotation(Quaternion.LookRotation(ForwardDir(), UpDir()));
+                    Hand().HapticTick(0.3f, 20);
                     var creaturesHit = new List<Creature>();
-                    foreach (var hit in Utils.ConeCastAll(Center(), 0.01f, ForwardDir() + Utils.RandomVector(-0.1f, 0.1f), 3, 10)) {
+                    foreach (var hit in Utils.ConeCastAll(Center(), 0.001f, ForwardDir() + Utils.RandomVector(-0.1f, 0.1f), 3, 10)) {
                         if (hit.rigidbody?.gameObject.GetComponent<RagdollPart>() is RagdollPart part) {
                             if (part.ragdoll.creature is Creature creature && !creature.isPlayer) {
-                                if (!creaturesHit.Contains(part.ragdoll.creature)) {
+                                if (creaturesHit.Where(p => p == part.ragdoll.creature).Count() < 3) {
                                     sword.RunAfter(() => {
+                                        if (creature == null) return;
                                         creaturesHit.Add(creature);
                                         var collisionInstance
-                                            = new CollisionInstance(new DamageStruct(DamageType.Energy, 0f)
-                                                { hitRagdollPart = part });
-                                        collisionInstance.targetColliderGroup = part.colliderGroup;
-                                        collisionInstance.contactPoint = hit.point;
-                                        collisionInstance.contactNormal = hit.normal;
-                                        collisionInstance.casterHand = Hand().caster;
-                                        collisionInstance.hasEffect = true;
-                                        collisionInstance.active = true;
+                                            = new CollisionInstance(
+                                                new DamageStruct(DamageType.Energy, flamethrowerDamage) { hitRagdollPart = part }) {
+                                                targetColliderGroup = part.colliderGroup,
+                                                contactPoint = hit.point,
+                                                contactNormal = hit.normal,
+                                                casterHand = Hand().caster,
+                                                hasEffect = true,
+                                                active = true
+                                            };
                                         var effect = revealFire.Spawn(hit.point,
                                             Quaternion.AngleAxis(Random.Range(0, 360), hit.normal), part.transform,
                                             collisionInstance);
-                                        effect.SetIntensity(Random.Range(0.5f, 1f));
+                                        effect.SetIntensity(Random.Range(1f, 2f));
                                         effect.Play();
+                                        if (!(creature.brain.GetAction<ActionStagger>() is ActionStagger)) {
+                                            creature.speak.PlaySound(CreatureSpeak.Type.Hit);
+                                            creature.brain.TryAction(new ActionStagger(ForwardDir(), flamethrowerPushback, GetStaggerType(part)));
+                                        }
                                         creature.Damage(collisionInstance);
-                                    }, 0.5f);
+                                    }, 0.5f * Vector3.Distance(hit.point, Center()));
                                 }
                             }
                         }
@@ -137,13 +149,33 @@ namespace Shatterblade.Modes {
             }
         }
 
-        public void FireSpheres() {
-            Catalog.GetData<ItemData>("FireSphere").SpawnAsync(sphere => {
-                sphere.transform.position = Center() + ForwardDir() * 0.3f;
-                sphere.rb.useGravity = false;
-                sphere.rb.AddForce(ForwardDir() * 10f, ForceMode.Impulse);
-                sphere.Despawn(1.5f);
-            });
+        public ActionStagger.Type GetStaggerType(RagdollPart part) {
+            var parryTypes = new List<RagdollPart.Type>() {
+                RagdollPart.Type.LeftArm,
+                RagdollPart.Type.RightArm,
+                RagdollPart.Type.LeftHand,
+                RagdollPart.Type.RightHand,
+            };
+            var torsoTypes = new List<RagdollPart.Type>() {
+                RagdollPart.Type.LeftArm,
+                RagdollPart.Type.RightArm,
+                RagdollPart.Type.LeftHand,
+                RagdollPart.Type.RightHand,
+            };
+            var legTypes = new List<RagdollPart.Type>() {
+                RagdollPart.Type.LeftArm,
+                RagdollPart.Type.RightArm,
+                RagdollPart.Type.LeftHand,
+                RagdollPart.Type.RightHand,
+            };
+            switch (part.type) {
+                case RagdollPart.Type.Head: return ActionStagger.Type.Head;
+                case var partType when parryTypes.Contains(partType): return ActionStagger.Type.Parry;
+                case var partType when torsoTypes.Contains(partType): return ActionStagger.Type.Torso;
+                case var partType when legTypes.Contains(partType): return ActionStagger.Type.Legs;
+            }
+
+            return ActionStagger.Type.Default;
         }
 
         public void EndEffects() {
@@ -191,7 +223,7 @@ namespace Shatterblade.Modes {
         public override void OnButtonReleased() {
             base.OnButtonReleased();
             if (IsTriggerPressed()) {
-                if (Time.time - lastTriggerPress > 1f) {
+                if (IsFireballCharged()) {
                     ThrowFireballs();
                 } else {
                     CancelFireballs();
@@ -204,11 +236,14 @@ namespace Shatterblade.Modes {
             rotation += Time.deltaTime * 80;
         }
 
+        float FireballChargeLerped() => Mathf.Clamp01(Mathf.InverseLerp(0, fireballChargeTime, Time.time - lastTriggerPress));
+        bool IsFireballCharged() => FireballChargeLerped() == 1;
+
         public override void OnTriggerReleased() {
             base.OnTriggerReleased();
             flameEffect?.End();
             if (IsButtonPressed()) {
-                if (Time.time - lastTriggerPress > 1f) {
+                if (IsFireballCharged()) {
                     ThrowFireballs();
                 } else {
                     CancelFireballs();
@@ -217,7 +252,7 @@ namespace Shatterblade.Modes {
         }
 
         public override string GetUseAnnotation() => IsButtonPressed()
-            ? (IsTriggerPressed() && Time.time - lastTriggerPress > 1f ? "Release to fire!" : "Pull trigger to charge fireballs!")
+            ? (IsTriggerPressed() && IsFireballCharged() ? "Release to fire!" : "Pull trigger to charge fireballs!")
             : "Pull trigger to burn your foes";
         public override bool GetUseAnnotationShown() => true;
 

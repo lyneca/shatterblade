@@ -5,6 +5,8 @@ using ExtensionMethods;
 
 namespace Shatterblade.Modes {
     class CircularSawMode : GrabbedShardMode {
+        public float speedMultiplier = 1;
+        public float sizeMultiplier = 1;
         public override int TargetPartNum() => 12;
         float rotation;
         public override Vector3 Center() => base.Center() + ForwardDir() * 0.4f;
@@ -13,10 +15,12 @@ namespace Shatterblade.Modes {
                 return Center()
                        + Quaternion.AngleAxis((index - 10) * 360f / 5f - rotation / 3, SideDir())
                        * UpDir()
+                       * sizeMultiplier
                        * 0.1f;
             return Center()
                    + Quaternion.AngleAxis(index * 360f / 9f + rotation, SideDir())
                    * UpDir()
+                   * sizeMultiplier
                    * (IsTriggerPressed() ? 0.2f : 0.25f);
         }
         public override Quaternion GetRot(int index, Rigidbody rb, BladePart part)
@@ -26,9 +30,9 @@ namespace Shatterblade.Modes {
         public override void Update() {
             base.Update();
             if (IsTriggerPressed()) {
-                rotation += Time.deltaTime * 700;
+                rotation += Time.deltaTime * 700 * speedMultiplier;
             } else {
-                rotation += Time.deltaTime * 80;
+                rotation += Time.deltaTime * 80 * speedMultiplier;
             }
         }
     }

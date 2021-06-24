@@ -1,19 +1,17 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics.Eventing.Reader;
-using System.Linq;
-using System.Runtime.ExceptionServices;
-using System.Security.Permissions;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq;
 using UnityEngine;
 using ThunderRoad;
 using ExtensionMethods;
+using Newtonsoft.Json;
 using Random = UnityEngine.Random;
 
 namespace Shatterblade.Modes {
     class LightningMode : SpellMode<SpellCastLightning> {
+        public float cooldown = 1;
+        public float damage = 50;
+        public float explosionForce = 50;
+        public float explosionRadius = 3;
+
         private float rotation;
         private GameObject target;
         private EffectInstance chargeEffect;
@@ -22,9 +20,10 @@ namespace Shatterblade.Modes {
         public override void OnItemLoaded(Item item) { base.OnItemLoaded(item); }
         public override void Enter(Shatterblade sword) {
             base.Enter(sword);
+            Debug.Log(explosionForce);
             target = new GameObject();
         }
-        float CooldownTime() => 1 - Mathf.Clamp01(Time.time - lastTriggerReleased);
+        float CooldownTime() => 1 - Mathf.Clamp01(Mathf.InverseLerp(0, cooldown, Time.time - lastTriggerReleased));
 
         public override Vector3 GetPos(int index, Rigidbody rb, BladePart part) {
             switch (index) {
@@ -78,6 +77,7 @@ namespace Shatterblade.Modes {
             rotation += Time.deltaTime * Mathf.Lerp(80, 300, Mathf.Clamp01(Time.time - lastTriggerPress));
             chargeEffect?.SetIntensity(Mathf.Clamp01(Time.time - lastTriggerPress));
             chargeEffect?.SetPosition(Center());
+            Hand().HapticTick(Mathf.Clamp01(Time.time - lastTriggerPress) * 0.5f, 20);
         }
 
         public override void OnTriggerNotHeld() {
@@ -99,7 +99,7 @@ namespace Shatterblade.Modes {
             effect.Play();
             if (part) {
                 var collisionInstance
-                    = new CollisionInstance(new DamageStruct(DamageType.Energy, 50) {
+                    = new CollisionInstance(new DamageStruct(DamageType.Energy, damage) {
                         hitRagdollPart = part,
                         recoil = 10f
                     }) {
@@ -121,7 +121,7 @@ namespace Shatterblade.Modes {
                 }
             }
 
-            Utils.Explosion(target.transform.position + ForwardDir() * -0.5f, 50, 3, false, true);
+            Utils.Explosion(target.transform.position + ForwardDir() * -0.5f, explosionForce, explosionRadius, true, true, true);
         }
 
         Vector3 GetTargetPoint() {

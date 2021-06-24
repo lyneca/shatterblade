@@ -37,8 +37,6 @@ namespace Shatterblade {
                 targetPoint = null;
                 sword.parts.Remove(this);
             };
-            item.colliderGroups.ForEach(cg => cg.data.modifiers.ForEach(modifier => modifier.imbueRate = 2.0f));
-            item.mainHandleLeft.touchRadius = 0.1f;
         }
 
         public void DeInit() {
@@ -113,6 +111,14 @@ namespace Shatterblade {
                     sword.BladeHaptic(collision.impactVelocity.magnitude);
                 }
             };
+            item.colliderGroups.ForEach(cg => cg.data.modifiers.ForEach(modifier => modifier.imbueRate = 2.0f));
+            item.mainHandleLeft.touchRadius = 0.1f;
+            item.collisionHandlers.ForEach(ch
+                => ch.damagers?.ForEach(damager => {
+                    if (damager?.data?.damageMultiplier != null) {
+                        damager.data.damageMultiplier = 0.01f * sword.module.damageModifier;
+                    }
+                }));
             Show();
         }
         public void ForAllRenderers(Action<MeshRenderer> action) {
@@ -169,13 +175,13 @@ namespace Shatterblade {
             var initialEmissive = new Dictionary<Renderer, Color>();
             item.renderers.ForEach(renderer
                 => initialEmissive[renderer] = renderer.material.GetColor("_EmissionColor"));
-            const float duration = 0.5f;
+            const float duration = 0.3f;
             Color targetColor = Color.HSVToRGB(Random.Range(0f, 1f), 1, 100, true);
             while (Time.time - start < duration) {
                 float value = Mathf.Sin(Mathf.PI * (Time.time - start) / duration);
                 item.renderers.ForEach(renderer => {
                     renderer.material.SetColor("_EmissionColor",
-                        Color.Lerp(initialEmissive[renderer], new Color(8, 0, 20),
+                        Color.Lerp(initialEmissive[renderer], targetColor,
                             Mathf.Sin(Mathf.PI * (Time.time - start) / duration)));
                     //renderer.material.SetFloat("_Smoothness", Mathf.Lerp(0.5f, 1, value));
                     //renderer.material.SetFloat("_OcclusionStrength", Mathf.Lerp(0.5f, 1, value));
@@ -266,7 +272,7 @@ namespace Shatterblade {
             if (sword.ShouldReform(this)) {
                 // If sword is locking and holstered
                 if (!item.holder) {
-                    if (sword.item.holder != null && IsLocked()) {
+                    if (sword.item.holder != null && IsLocked() && sword.ShouldHide(this)) {
                         if (!wasInHolder) {
                             wasInHolder = true;
                             item.rb.isKinematic = true;
@@ -298,7 +304,8 @@ namespace Shatterblade {
                         item.mainHandleLeft.SetTelekinesis(false);
                         if (!(sword.mode is CannonMode))
                             sword.item.handlers.ForEach(handler => handler.HapticTick());
-                        //Flash();
+                        if (sword.module.discoMode)
+                            Flash();
                         //Catalog.GetData<EffectData>("ShatterbladeClink").Spawn(transform).Play();
                         Attach();
                     }
@@ -333,7 +340,6 @@ namespace Shatterblade {
         public void Attach() {
             item.mainCollisionHandler.SetPhysicModifier(this, 4, 0, 1, LOCKED_DRAG, LOCKED_ANGULAR_DRAG);
             //Catalog.GetData<EffectData>("ShatterbladeSnick").Spawn(transform).Play();
-            LockJoint();
             Depenetrate();
             DestroyJoint();
             CreateJoint(true);
@@ -365,17 +371,6 @@ namespace Shatterblade {
             CreateJoint();
         }
 
-        public void LockJoint() {
-            JointDrive posDrive = joint.xDrive;
-            posDrive.positionSpring = 1000000;
-            posDrive.positionDamper = 4000;
-            posDrive.maximumForce = Mathf.Infinity;
-            joint.xDrive = posDrive;
-            joint.yDrive = posDrive;
-            joint.zDrive = posDrive;
-            sword.ModifyJoint(this);
-        }
-
         /// <summary>
         /// Scale drive spring and damping to a given factor
         /// </summary>
@@ -385,7 +380,7 @@ namespace Shatterblade {
             JointDrive posDrive = joint.xDrive;
             posDrive.positionSpring = 2000;
             posDrive.positionDamper = Mathf.Lerp(20, 100, factor);
-            posDrive.maximumForce = Mathf.Infinity;
+            posDrive.maximumForce = sword.module.jointMaxForce;
             joint.xDrive = posDrive;
             joint.yDrive = posDrive;
             joint.zDrive = posDrive;
@@ -416,12 +411,12 @@ namespace Shatterblade {
             JointDrive posDrive = new JointDrive {
                 positionSpring = 2000,
                 positionDamper = 120,
-                maximumForce = Mathf.Infinity
+                maximumForce = sword.module.jointMaxForce
             };
             JointDrive rotDrive = new JointDrive {
                 positionSpring = 1000,
                 positionDamper = 10,
-                maximumForce = Mathf.Infinity
+                maximumForce = sword.module.jointMaxForce
             };
             joint.rotationDriveMode = RotationDriveMode.XYAndZ;
             joint.xDrive = posDrive;

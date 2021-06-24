@@ -11,16 +11,21 @@ using static UnityEngine.Object;
 
 namespace Shatterblade {
     public class ShatterbladeModule : ItemModule {
-        public bool tutorial;
+        public bool tutorial = false;
+        public bool discoMode = false;
+        public float damageModifier = 1;
+        public float jointMaxForce = 100;
         public override void OnItemLoaded(Item item) {
             base.OnItemLoaded(item);
             if (Level.current.data.id == "CharacterSelection")
                 return;
             var shatterblade = item.gameObject.AddComponent<Shatterblade>();
             shatterblade.isTutorialBlade = tutorial;
+            shatterblade.module = this;
         }
     }
     public class Shatterblade : MonoBehaviour {
+        public ShatterbladeModule module;
         const float BUTTON_TAP_THRESHOLD = 0.3f;
         public bool isTutorialBlade;
         public bool locking;
@@ -45,18 +50,21 @@ namespace Shatterblade {
         public Annotation handleAnnotationB;
         public Annotation otherHandAnnotation;
         public Annotation gunShardAnnotation;
+        public Annotation sawShardAnnotation;
+        public Annotation swarmShardAnnotation;
         public Annotation imbueHandleAnnotation;
         private float orgAxisLength;
-        public List<Type> modes;
+        public List<BladeMode> modes;
         public void Awake() {
-            modes = new List<Type>() { };
+            modes = new List<BladeMode>() { };
         }
 
         public void Start() {
+            modes = modes.OrderBy(mode => mode.Priority()).ToList();
             Init();
         }
         public void RegisterMode(BladeMode newMode) {
-            modes.Add(newMode.GetType());
+            modes.Add(newMode);
         }
         public void Init() {
             if (!gameObject || Player.currentCreature?.handLeft == null)
@@ -109,6 +117,8 @@ namespace Shatterblade {
             otherHandAnnotation?.Destroy();
             imbueHandleAnnotation?.Destroy();
             gunShardAnnotation?.Destroy();
+            sawShardAnnotation?.Destroy();
+            swarmShardAnnotation?.Destroy();
         }
         public void SpawnAllParts() {
             for (int i = 0; i < 15; i++) {
@@ -154,6 +164,18 @@ namespace Shatterblade {
                         imbueHandleAnnotation = null;
                     }
                     imbueHandleAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(-1, -2, 0));
+                } else if (i == 12) {
+                    if (sawShardAnnotation) {
+                        Destroy(sawShardAnnotation);
+                        sawShardAnnotation = null;
+                    }
+                    sawShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(-1, 0.5f, 0));
+                } else if (i == 13) {
+                    if (swarmShardAnnotation) {
+                        Destroy(swarmShardAnnotation);
+                        swarmShardAnnotation = null;
+                    }
+                    swarmShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(0, 2, 0));
                 }
             });
         }
@@ -162,6 +184,8 @@ namespace Shatterblade {
             imbueHandleAnnotation.Hide();
             otherHandAnnotation.Hide();
             gunShardAnnotation.Hide();
+            sawShardAnnotation.Hide();
+            swarmShardAnnotation.Hide();
             handleAnnotationA.Hide();
             handleAnnotationB.Hide();
         }
@@ -202,48 +226,26 @@ namespace Shatterblade {
                 part.IgnoreHand(hand, ignore, delay);
             }
         }
-        public void FixedUpdate() {
-            if (!isReady)
-                return;
-            if (item.handlers.Any(handler => handler.playerHand.controlHand.alternateUsePressed)) {
-                foreach (var handler in item.handlers) {
-                    item.mainHandleLeft.axisLength = 0;
-                    item.mainHandleLeft.SetSliding(handler, false);
-                    item.mainHandleLeft.StartCoroutine(StopSliding());
-                }
-            }
-        }
-        public IEnumerator StopSliding() {
-            yield return new WaitForEndOfFrame();
-            if (item.handlers.Any(handler => handler.playerHand.controlHand.alternateUsePressed)) {
-                foreach (var handler in item.handlers) {
-                    item.mainHandleLeft.SetSliding(handler, false);
-                }
-            }
-        }
 
         public void ChangeMode<T>() where T : BladeMode, new() {
             if (mode is T) return;
             mode?.Exit();
-            //Debug.Log($"changing to state {typeof(T)}");
             foreach (var hand in item.handlers)
                 IgnoreCollider(hand, true);
             mode = new T();
             mode.Enter(this);
         }
 
-        public void ChangeMode(Type newMode) {
-            if (newMode.IsSubclassOf(typeof(BladeMode))) {
-                var newModeInstance = (BladeMode) Activator.CreateInstance(newMode);
-                if (mode.GetType() == newModeInstance.GetType()) {
-                    return;
-                }
-                mode?.Exit();
-                foreach (var hand in item.handlers)
-                    IgnoreCollider(hand, true);
-                mode = newModeInstance;
-                mode.Enter(this);
+        public void ChangeMode(BladeMode newMode) {
+            var newModeInstance = newMode.Clone();
+            if (mode.GetType() == newModeInstance.GetType()) {
+                return;
             }
+            mode?.Exit();
+            foreach (var hand in item.handlers)
+                IgnoreCollider(hand, true);
+            mode = newModeInstance;
+            mode.Enter(this);
         }
 
         public void CheckForMissingParts() {
@@ -297,7 +299,7 @@ namespace Shatterblade {
 
             bool changedModes = false;
             foreach (var mode in modes) {
-                if (((BladeMode)Activator.CreateInstance(mode)).Test(this)) {
+                if (mode.Test(this)) {
                     ChangeMode(mode);
                     changedModes = true;
                 }
@@ -308,9 +310,10 @@ namespace Shatterblade {
                     if (!buttonWasPressed) {
                         buttonWasPressed = true;
                         lastButtonPress = Time.time;
+                        orgAxisLength = item.mainHandleLeft.axisLength;
+                        item.mainHandleLeft.axisLength = 0;
                         foreach (var handler in item.handlers) {
-                            orgAxisLength = item.mainHandleLeft.axisLength;
-                            item.mainHandleLeft.axisLength = 0;
+                            item.mainHandleLeft.SetSliding(handler, false);
                         }
                     }
                     locking = true;
@@ -340,9 +343,7 @@ namespace Shatterblade {
                         } else {
                             wasLocking = true;
                         }
-                        foreach (var handler in item.handlers) {
-                            item.mainHandleLeft.axisLength = orgAxisLength;
-                        }
+                        item.mainHandleLeft.axisLength = orgAxisLength;
                     }
                     buttonWasPressed = false;
                 }
@@ -370,6 +371,8 @@ namespace Shatterblade {
                     part.Reform();
             }
         }
+
+        public bool ShouldHide(BladePart part) => mode?.ShouldHideWhenHolstered(part) ?? true;
         public bool ShouldReform(BladePart part) => locking && (mode?.ShouldReform(part) ?? true);
         public bool ShouldPartLock(BladePart part) => locking && (mode?.ShouldLock(part) ?? true);
         public void ModifyJoint(BladePart part) => mode?.JointModifier(part.joint, part);
@@ -384,6 +387,10 @@ namespace Shatterblade {
     /// </summary>
     public abstract class BladeMode : ItemModule {
 
+        public BladeMode Clone() {
+            return (BladeMode)MemberwiseClone();
+        }
+
         /// <summary>
         /// Called when the item is first spawned. You likely don't want to touch this.
         /// </summary>
@@ -394,6 +401,14 @@ namespace Shatterblade {
                 shatterblade.RegisterMode(this);
             }
         }
+
+        /// <summary>
+        /// Determines the priority of the ability. The higher the number, the sooner it's checked in the list.
+        /// E.g. if you want to override the Lightning ability, set this to a number higher than it.
+        /// All base abilities default to a priority less than zero.
+        /// </summary>
+        /// <returns>The priority of the mode</returns>
+        public virtual float Priority() => -1;
 
         /// <summary>
         /// The sword this mode is running on.
@@ -431,6 +446,11 @@ namespace Shatterblade {
         /// Given a part, defines whether the part should attempt to hard lock to the part. You likely won't need this.
         /// </summary>
         public virtual bool ShouldLock(BladePart part) => true;
+
+        /// <summary>
+        /// Given a part, defines whether that part should vanish when the sword is holstered in this mode. You likely won't need this.
+        /// </summary>
+        public virtual bool ShouldHideWhenHolstered(BladePart part) => false;
 
         /// <summary>
         /// This function is called after a blade shard creates or updates its joint.

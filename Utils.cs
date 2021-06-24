@@ -10,6 +10,7 @@ using UnityEngine;
 
 using ExtensionMethods;
 using System.Collections;
+using Random = UnityEngine.Random;
 
 namespace ExtensionMethods {
     public enum FingerPart {
@@ -429,7 +430,7 @@ static class Utils {
     /// <summary>
     /// Get a private field from an object
     /// </summary>
-    public static void Explosion(Vector3 origin, float force, float radius, bool massCompensation = false, bool disarm = false) {
+    public static void Explosion(Vector3 origin, float force, float radius, bool massCompensation = false, bool disarm = false, bool dismemberIfKill = false) {
         var seenRigidbodies = new List<Rigidbody>();
         var seenCreatures = new List<Creature> { Player.currentCreature };
         foreach (var collider in Physics.OverlapSphere(origin, radius)) {
@@ -456,6 +457,13 @@ static class Utils {
                 if (disarm) {
                     npc.handLeft.TryRelease();
                     npc.handRight.TryRelease();
+                }
+                if (dismemberIfKill && npc.isKilled) {
+                    foreach (var ragdollPart in npc.ragdoll.parts
+                        .Where(thisPart => thisPart.sliceAllowed)
+                        .OrderBy(thisPart => Random.Range(0f, 1f)).Take(Random.Range(0, 2))) {
+                        ragdollPart.Slice();
+                    }
                 }
             }
         }
@@ -612,10 +620,13 @@ static class Utils {
                 Vector3 hitPoint = sphereCastHits[i].point;
                 Vector3 directionToHit = hitPoint - origin;
                 float angleToHit = Vector3.Angle(direction, directionToHit);
+                float multiplier = 1f;
+                if (directionToHit.magnitude < 2f)
+                    multiplier = 4f;
                 bool hitRigidbody = sphereCastHits[i].rigidbody is Rigidbody rb
-                                    && Vector3.Angle(direction, rb.transform.position - origin) < coneAngle;
+                                    && Vector3.Angle(direction, rb.transform.position - origin) < coneAngle * multiplier;
 
-                if (angleToHit < coneAngle || hitRigidbody) {
+                if (angleToHit < coneAngle * multiplier || hitRigidbody) {
                     coneCastHitList.Add(sphereCastHits[i]);
                 }
             }
@@ -623,3 +634,4 @@ static class Utils {
         return coneCastHitList.ToArray();
     }
 }
+

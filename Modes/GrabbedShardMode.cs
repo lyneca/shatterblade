@@ -7,6 +7,8 @@ using ExtensionMethods;
 namespace Shatterblade.Modes {
     public abstract class GrabbedShardMode : BladeMode {
         public List<Rigidbody> jointParts;
+        private string lastUseText = "";
+        private string lastAltUseText = "";
         private bool wasButtonPressed;
         private bool wasTriggerPressed;
 
@@ -211,29 +213,32 @@ namespace Shatterblade.Modes {
             }
         }
 
-        /// <returns>A list of the parts in order. Skips the part that is held by the player.</returns>
-        public IEnumerable<Rigidbody> PartsInOrder() => from part in sword.jointRBs
-            where part.name != $"Blade_${TargetPartNum()}"
-            orderby int.Parse(part.name.Split('_')[1])
-            select part;
-
         public override void Update() {
             base.Update();
             CheckInputs();
-            int i = 1;
             useAnnotation.offset = GetUseAnnotationPosition();
             altUseAnnotation.offset = GetAltUseAnnotationPosition();
             if (GetUseAnnotationShown()) {
-                useAnnotation.SetText(GetUseAnnotation());
+                if (lastUseText != GetUseAnnotation()) {
+                    useAnnotation.SetText(GetUseAnnotation());
+                    lastUseText = GetUseAnnotation();
+                }
             } else {
                 useAnnotation.Hide();
+                lastUseText = "";
             }
             if (GetAltUseAnnotationShown()) {
-                altUseAnnotation.SetText(GetAltUseAnnotation());
+                if (lastAltUseText != GetAltUseAnnotation()) {
+                    altUseAnnotation.SetText(GetAltUseAnnotation());
+                    lastAltUseText = GetAltUseAnnotation();
+                }
             } else {
                 altUseAnnotation.Hide();
+                lastAltUseText = "";
             }
-            foreach (var jointPart in PartsInOrder()) {
+
+            int i = 1;
+            foreach (Rigidbody jointPart in jointParts) {
                 var part = sword.rbMap[jointPart];
                 jointPart.transform.position = GetPos(i, jointPart, part);
                 jointPart.transform.rotation = GetRot(i, jointPart, part)

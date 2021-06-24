@@ -8,12 +8,16 @@ using Object = UnityEngine.Object;
 
 namespace Shatterblade.Modes {
     class GravityMode : SpellMode<SpellCastGravity> {
-        float rotation;
-        Item targetItem;
-        ConfigurableJoint joint;
-        Rigidbody targetPoint;
-        float effectIntensity;
-        EffectInstance effect;
+        public float cooldown = 1;
+        public float itemThrowForce = 30;
+        public float altFireForce = 30f;
+
+        private float rotation;
+        private Item targetItem;
+        private ConfigurableJoint joint;
+        private Rigidbody targetPoint;
+        private float effectIntensity;
+        private EffectInstance effect;
         private float lastHeldRadius;
         public override void OnItemLoaded(Item item) { base.OnItemLoaded(item); }
         public override void Enter(Shatterblade sword) {
@@ -37,15 +41,16 @@ namespace Shatterblade.Modes {
                 Object.Destroy(joint);
                 joint = Utils.CreateSimpleJoint(targetItem.rb, targetPoint, 100 * targetItem.GetMassModifier(), 5 * targetItem.GetMassModifier());
                 effect = Catalog.GetData<EffectData>("ShatterbladeGravity").Spawn(HeldCenter(), targetItem.transform.rotation, null, null, false);
-                effect.SetPosition(HeldCenter());
-                effect.Play();
+                effect?.SetPosition(HeldCenter());
+                effect?.Play();
                 return;
             }
         }
         public void ThrowHeldThing() {
             if (targetItem) {
+                Hand().HapticTick(1, 5);
                 targetItem.Throw(1, Item.FlyDetection.Forced);
-                targetItem.rb.AddForce(Utils.HomingThrow(targetItem, ForwardDir(), 30) * targetItem.GetMassModifier() * 30, ForceMode.Impulse);
+                targetItem.rb.AddForce(Utils.HomingThrow(targetItem, ForwardDir(), 30) * targetItem.GetMassModifier() * itemThrowForce, ForceMode.Impulse);
                 Catalog.GetData<EffectData>("ShatterbladeGravityFire")
                     .Spawn(targetItem.transform.position, targetItem.transform.rotation).Play();
                 sword.StartCoroutine(ThrowEffectCoroutine());
@@ -62,7 +67,6 @@ namespace Shatterblade.Modes {
             foreach (var mesh in from meshEffect in effect.effects
                                  where meshEffect is EffectMesh
                                  select meshEffect as EffectMesh) {
-                Debug.Log(mesh.meshRenderer.material.HasProperty("_Amount"));
                 mesh.meshRenderer.material.SetFloat("_Amount", intensity);
             }
 
@@ -78,9 +82,10 @@ namespace Shatterblade.Modes {
             }
         }
         public void GravityPush() {
+            Hand().HapticTick(1, 5);
             Catalog.GetData<EffectData>("ShatterbladeGravityAoE")
                 .Spawn(Center() + ForwardDir() * 0.2f, Quaternion.LookRotation(ForwardDir(), UpDir())).Play();
-            Utils.PushForce(Hand().transform.position + ForwardDir() * 1, ForwardDir(), 1, 4, ForwardDir() * 50, true, true);
+            Utils.PushForce(Hand().transform.position + ForwardDir() * 1, ForwardDir(), 1, 4, ForwardDir() * altFireForce, true, true);
         }
         public bool HoldingSomething() => targetItem != null;
 
@@ -112,14 +117,15 @@ namespace Shatterblade.Modes {
             }
         }
         public Vector3 InnerRing(int i) {
+            Debug.Log(i);
             if (IsButtonPressed()) {
                 return Center()
-                       + Quaternion.AngleAxis((i - 2) * (1f / 5f) * 360f + rotation, ForwardDir())
+                       + Quaternion.AngleAxis((i - 10) * (1f / 5f) * 360f + rotation, ForwardDir())
                        * UpDir()
                        * 0.1f;
             } else {
                 return Center()
-                       + Quaternion.AngleAxis((i - 2) * (1f / 5f) * 360f + rotation, ForwardDir())
+                       + Quaternion.AngleAxis((i - 10) * (1f / 5f) * 360f + rotation, ForwardDir())
                        * UpDir()
                        * (HoldingSomething() ? 0.1f : 0.3f)
                        + ForwardDir() * (HoldingSomething() ? 0.2f : -0.1f);
@@ -128,12 +134,12 @@ namespace Shatterblade.Modes {
         public Vector3 OuterRing(int i) {
             if (!HoldingSomething() && IsButtonPressed()) {
                 return Center()
-                       + Quaternion.AngleAxis((i - 9) * (1f / 7f) * 360f + rotation * -1, ForwardDir())
+                       + Quaternion.AngleAxis((i - 2) * (1f / 7f) * 360f + rotation * -1, ForwardDir())
                        * UpDir() * 0.3f
                        + ForwardDir() * 0.1f;
             } else {
                 return Center()
-                       + Quaternion.AngleAxis((i - 9) * (1f / 7f) * 360f + rotation * -1, ForwardDir())
+                       + Quaternion.AngleAxis((i - 2) * (1f / 7f) * 360f + rotation * -1, ForwardDir())
                        * UpDir()
                        * (HoldingSomething() ? 0.2f : 0.3f)
                        + ForwardDir() * (HoldingSomething() ? 0.1f : -0.2f);
@@ -177,7 +183,7 @@ namespace Shatterblade.Modes {
         public override void OnTriggerPressed() {
             effectIntensity = 0;
             effect?.End();
-            if (IsButtonPressed() && Time.time - lastTriggerPress > 1f) {
+            if (IsButtonPressed()) {
                 GravityPush();
             }
         }
@@ -186,6 +192,7 @@ namespace Shatterblade.Modes {
             base.OnTriggerHeld();
             if (!IsButtonPressed() && !HoldingSomething())
                 AcquireTarget();
+            Hand().HapticTick((Mathf.Sin((Time.time - lastTriggerPress) * 10f) + 1) / 2 * 0.5f, 20);
         }
 
         public override void OnTriggerReleased() {
@@ -206,13 +213,13 @@ namespace Shatterblade.Modes {
         public override bool GetUseAnnotationShown() => true;
         public override string GetAltUseAnnotation() => "Hold button to switch modes";
         public override bool GetAltUseAnnotationShown() => !IsButtonPressed() && !IsTriggerPressed();
-        public override float Cooldown() => IsButtonPressed() ? 1f : 0;
+        public override float Cooldown() => IsButtonPressed() ? cooldown : 0;
         public override void Update() {
             base.Update();
             targetPoint.transform.position = Center() + ForwardDir() * (0.2f + HeldRadius() * 1.5f);
             targetPoint.transform.rotation = Quaternion.LookRotation(ForwardDir(), UpDir());
             if (HoldingSomething()) {
-                targetItem.rb.velocity *= Mathf.Lerp(0.8f, 1, Mathf.InverseLerp(0, 4, Vector3.Distance(targetItem.transform.position, targetPoint.position)));
+                targetItem.rb.velocity *= Mathf.Lerp(0.7f, 1, Mathf.InverseLerp(0, 4, Vector3.Distance(targetItem.transform.position, targetPoint.position)));
                 targetItem.rb.velocity = targetItem.rb.velocity.magnitude
                                          * (targetPoint.transform.position - targetItem.transform.position).normalized;
                 if (effect != null) {
