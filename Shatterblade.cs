@@ -51,7 +51,7 @@ namespace Shatterblade {
         public Annotation otherHandAnnotation;
         public Annotation gunShardAnnotation;
         public Annotation sawShardAnnotation;
-        public Annotation swarmShardAnnotation;
+        //public Annotation swarmShardAnnotation;
         public Annotation imbueHandleAnnotation;
         private float orgAxisLength;
         public List<BladeMode> modes;
@@ -118,7 +118,7 @@ namespace Shatterblade {
             imbueHandleAnnotation?.Destroy();
             gunShardAnnotation?.Destroy();
             sawShardAnnotation?.Destroy();
-            swarmShardAnnotation?.Destroy();
+            //swarmShardAnnotation?.Destroy();
         }
         public void SpawnAllParts() {
             for (int i = 0; i < 15; i++) {
@@ -170,13 +170,14 @@ namespace Shatterblade {
                         sawShardAnnotation = null;
                     }
                     sawShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(-1, 0.5f, 0));
-                } else if (i == 13) {
-                    if (swarmShardAnnotation) {
-                        Destroy(swarmShardAnnotation);
-                        swarmShardAnnotation = null;
-                    }
-                    swarmShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(0, 2, 0));
                 }
+                //else if (i == 13) {
+                //    if (swarmShardAnnotation) {
+                //        Destroy(swarmShardAnnotation);
+                //        swarmShardAnnotation = null;
+                //    }
+                //    swarmShardAnnotation = Annotation.CreateAnnotation(this, item.transform, this.item.transform, new Vector3(0, 2, 0));
+                //}
             });
         }
 
@@ -185,7 +186,7 @@ namespace Shatterblade {
             otherHandAnnotation.Hide();
             gunShardAnnotation.Hide();
             sawShardAnnotation.Hide();
-            swarmShardAnnotation.Hide();
+            //swarmShardAnnotation.Hide();
             handleAnnotationA.Hide();
             handleAnnotationB.Hide();
         }

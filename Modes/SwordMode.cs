@@ -20,10 +20,10 @@ namespace Shatterblade {
         public override void Update() {
             base.Update();
             if (sword.locking) {
-                sword.handleAnnotationA.SetText("Hold A/X to expand\nthe blade");
+                sword.handleAnnotationA.SetText("Hold [[BUTTON]] to expand\nthe blade");
                 sword.gunShardAnnotation.SetText("Grab this shard to\nmake a handgun!");
                 sword.sawShardAnnotation.SetText("Grab this shard to\nmake a buzz saw!");
-                sword.swarmShardAnnotation.SetText("Grab this shard to\nsummon the swarm!");
+                //sword.swarmShardAnnotation.SetText("Grab this shard to\nsummon the swarm!");
                 if (sword.item.handlers.Count() == 1) {
                     sword.otherHandAnnotation.SetTarget(sword.item.mainHandler.otherHand.transform);
                     
@@ -51,7 +51,7 @@ namespace Shatterblade {
             } else {
                 sword.handleAnnotationA.Hide();
             }
-            sword.handleAnnotationB.SetText($"Tap A/X to {(sword.locking ? "Shatter" : "Reform")}\n the blade");
+            sword.handleAnnotationB.SetText($"Tap [[BUTTON]] to {(sword.locking ? "Shatter" : "Reform")}\n the blade");
         }
     }
 }

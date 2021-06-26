@@ -40,7 +40,7 @@ namespace Shatterblade.Modes {
         public override string GetUseAnnotation() => IsButtonPressed() ? "Pull trigger to burst fire" : "Pull trigger to fire";
         public override bool GetAltUseAnnotationShown() => !IsButtonPressed();
 
-        public override string GetAltUseAnnotation() => "Hold Oculus A/X to charge up a burst shot";
+        public override string GetAltUseAnnotation() => "Hold [[BUTTON]] to charge up a burst shot";
 
         public void Reload() {
             if (Time.time - lastReload <= 1)

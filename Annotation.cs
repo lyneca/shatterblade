@@ -21,6 +21,9 @@ namespace Shatterblade {
         private Transform rotationTarget;
         public bool shouldShow;
 
+        public static string GetButtonString() => "A/X/Touchpad";
+        public static string GetButtonStringHand(Side side) => (side == Side.Left ? "X" : "A") + "Touchpad";
+
         public static Annotation CreateAnnotation(Shatterblade sword, Transform target, Transform rotationTarget, Vector3 offset) {
             var annotation = new GameObject().AddComponent<Annotation>();
             annotation.Init(sword, target, rotationTarget, offset);
@@ -69,10 +72,10 @@ namespace Shatterblade {
             this.rotationTarget = target;
         }
 
-        public void SetText(string newText) {
+        public void SetText(string newText, RagdollHand hand = null) {
             if (!shouldShow) return;
             Show();
-            text.text = newText;
+            text.text = newText.Replace("[[BUTTON]]", hand == null ? GetButtonString() : GetButtonStringHand(hand.side));
         }
 
         Camera PlayerCamera() => Player.local.head.cam;

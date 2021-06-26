@@ -15,6 +15,8 @@ namespace Shatterblade.Modes {
         public float flamethrowerDamage = 0.7f;
         public float flamethrowerPushback = 5;
         public float fireballChargeTime = 1f;
+        public float fireballVelocity = 30f;
+        public bool fireballGravity = true;
 
         private float rotation;
         private EffectInstance flameEffect;
@@ -135,9 +137,11 @@ namespace Shatterblade.Modes {
                                             collisionInstance);
                                         effect.SetIntensity(Random.Range(1f, 2f));
                                         effect.Play();
-                                        if (!(creature.brain.GetAction<ActionStagger>() is ActionStagger)) {
-                                            creature.speak.PlaySound(CreatureSpeak.Type.Hit);
-                                            creature.brain.TryAction(new ActionStagger(ForwardDir(), flamethrowerPushback, GetStaggerType(part)));
+                                        if (!creature.isKilled) {
+                                            if (!(creature.brain.GetAction<ActionStagger>() is ActionStagger)) {
+                                                creature.speak.PlaySound(CreatureSpeak.Type.Hit);
+                                                creature.brain.TryAction(new ActionStagger(ForwardDir(), flamethrowerPushback, GetStaggerType(part)));
+                                            }
                                         }
                                         creature.Damage(collisionInstance);
                                     }, 0.5f * Vector3.Distance(hit.point, Center()));
@@ -192,6 +196,7 @@ namespace Shatterblade.Modes {
                         damager.Load(Catalog.GetData<DamagerData>("Fireball"), collisionHandler);
                 }
                 ItemMagicProjectile component = projectile.GetComponent<ItemMagicProjectile>();
+                projectile.rb.useGravity = fireballGravity;
                 if (component) {
                     component.guided = false;
                     component.speed = 30;
@@ -203,7 +208,7 @@ namespace Shatterblade.Modes {
                     component.Fire(Utils.HomingThrow(projectile, ForwardDir() * 30, 10f),
                         Catalog.GetData<EffectData>("SpellFireball"));
                 } else {
-                    projectile.rb.AddForce(Utils.HomingThrow(projectile, ForwardDir() * 30, 10f), ForceMode.Impulse);
+                    projectile.rb.AddForce(Utils.HomingThrow(projectile, ForwardDir() * fireballVelocity, 10f), ForceMode.Impulse);
                     projectile.Throw(flyDetection: Item.FlyDetection.Forced);
                 }
             });

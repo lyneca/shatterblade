@@ -19,7 +19,7 @@ namespace Shatterblade.Modes {
 
         public override void Update() {
             base.Update();
-            sword.handleAnnotationA.SetText("Release A/X to retract the blade");
+            sword.handleAnnotationA.SetText("Release [[BUTTON]] to retract the blade");
             sword.handleAnnotationB.SetText("Hold Trigger to form a shield");
             sword.imbueHandleAnnotation.Hide();
             sword.otherHandAnnotation.Hide();
